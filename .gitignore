@@ -209,3 +209,6 @@ __marimo__/
 
 poetry.lock
 4_Base_2_numpy-pandas-unittests\public_tests
+Data_analisis/20_10_25/face.mp4
+Data_analisis/20_10_25/deploy.prototxt
+Data_analisis/20_10_25/res10_300x300_ssd_iter_140000_fp16.caffemodel
