@@ -212,3 +212,13 @@ poetry.lock
 Data_analisis/20_10_25/face.mp4
 Data_analisis/20_10_25/deploy.prototxt
 Data_analisis/20_10_25/res10_300x300_ssd_iter_140000_fp16.caffemodel
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.mp4
+*.avi
+*.csv
+*.xlsx
