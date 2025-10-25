@@ -222,3 +222,11 @@ Data_analisis/20_10_25/res10_300x300_ssd_iter_140000_fp16.caffemodel
 *.avi
 *.csv
 *.xlsx
+OPP_Varlamov
+data.pkl
+CV_GML/research_knn/__MACOSX/._public_tests
+CV_GML/research_knn/__MACOSX/public_tests/._.DS_Store
+CV_GML/research_knn/__MACOSX/public_tests/01_unittest_cv_input/._.DS_Store
+CV_GML/research_knn/__MACOSX/public_tests/._01_unittest_cv_input
+CV_GML/research_knn/public_tests/.DS_Store
+CV_GML/research_knn/public_tests/01_unittest_cv_input/.DS_Store
