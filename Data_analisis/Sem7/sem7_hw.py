@@ -1,56 +1,85 @@
+# фикс Qt на Wayland (до import cv2)
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+
 import cv2
-import sys
 from pathlib import Path
+import time
 
-path = "Forest_Gump_mountains.mp4"
-# if len(sys.argv) > 1:
-#     path = sys.argv[1]
+# --------- ПАРАМЕТРЫ ----------
+VIDEO_PATH = "Финиш Московского марафона 2025. Мужчины (online-video-cutter.com).mp4"
+INIT_BBOX = None  # (x, y, w, h). Если None — выбери мышкой в окне.
+# ------------------------------
 
-src = cv2.VideoCapture(path)
+BASE = Path(__file__).parent
+cap = cv2.VideoCapture(str(BASE / VIDEO_PATH))
+if not cap.isOpened():
+    raise RuntimeError(f"Cannot open video: {BASE / VIDEO_PATH}")
 
-winName = "Face detection"
-cv2.namedWindow(winName, cv2.WINDOW_NORMAL)
+# GOTURN требует файлы с ИМЕНАМИ ровно 'goturn.prototxt' и 'goturn.caffemodel'
+proto = BASE / "goturn.prototxt"
+model = BASE / "goturn.caffemodel"
+if not (proto.exists() and model.exists()):
+    raise FileNotFoundError("Нужны goturn.prototxt и goturn.caffemodel рядом со скриптом")
 
+# многие сборки OpenCV ищут их в текущем каталоге — сменим cwd
+os.chdir(BASE)
 
-# Загружаем модель
-net = cv2.dnn.readNetFromCaffe(
-    r"C:\Users\Mishele Dolmin\Documents\CODE\cmc_msu_ml\Data_analisis\Sem7\deploy.prototxt", 
-    r"C:\Users\Mishele Dolmin\Documents\CODE\cmc_msu_ml\Data_analisis\Sem7\res10_300x300_ssd_iter_140000_fp16.caffemodel"
-)
+if hasattr(cv2, "legacy") and hasattr(cv2.legacy, "TrackerGOTURN_create"):
+    tracker = cv2.legacy.TrackerGOTURN_create()
+elif hasattr(cv2, "TrackerGOTURN_create"):
+    tracker = cv2.TrackerGOTURN_create()
+else:
+    raise RuntimeError("В твоём OpenCV нет GOTURN. Установи opencv-contrib-python.")
 
-inputWidth, inputHeight = 300, 300
-mean = [104, 117, 123]
-confidenceThreshold = 0.1
+win = "Person tracking (GOTURN)"
+cv2.namedWindow(win, cv2.WINDOW_NORMAL)
 
-while cv2.waitKey(40) != 27 :
-    ok, frame = src.read()
+ok, frame = cap.read()
+if not ok:
+    raise RuntimeError("Empty first frame")
+
+if INIT_BBOX is None:
+    sel = cv2.selectROI(win, frame, fromCenter=False, showCrosshair=True)
+    INIT_BBOX = tuple(map(int, sel))
+
+if INIT_BBOX is None or len(INIT_BBOX) != 4:
+    raise ValueError("INIT_BBOX должен быть (x, y, w, h) или выбери ROI мышкой")
+
+tracker.init(frame, INIT_BBOX)
+
+fps_avg, alpha = 0.0, 0.1
+while True:
+    t0 = time.time()
+    ok, frame = cap.read()
     if not ok:
         break
 
-    frameHeight, frameWidth = frame.shape[0], frame.shape[1]
-    
-    blob = cv2.dnn.blobFromImage(frame, 1.0, (inputWidth, inputHeight), mean, swapRB = False, crop = False )
-    net.setInput(blob)
+    ok, box = tracker.update(frame)
+    if ok:
+        x, y, w, h = map(int, box)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+    else:
+        cv2.putText(frame, "Tracking lost", (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
 
-    detections = net.forward()
-    
-    for i in range(detections.shape[2]):
-        conf = detections[0, 0, i, 2]
-        if conf > confidenceThreshold:
-            x1 = int(detections[0, 0, i, 3] * frameWidth)
-            y1 = int(detections[0, 0, i, 4] * frameHeight)
-            x2 = int(detections[0, 0, i, 5] * frameWidth)
-            y2 = int(detections[0, 0, i, 6] * frameHeight)            
+    dt = time.time() - t0
+    fps = 1.0 / dt if dt > 0 else 0.0
+    fps_avg = (1 - alpha) * fps_avg + alpha * fps if fps_avg else fps
+    cv2.putText(frame, f"FPS: {fps_avg:.1f}", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = "Conf : %.5f" % conf
+    cv2.imshow(win, frame)
+    key = cv2.waitKey(1) & 0xFF
+    if key == 27:  # Esc
+        break
+    if key == ord('r'):  # перевыбор ROI
+        sel = cv2.selectROI(win, frame, fromCenter=False, showCrosshair=True)
+        if sel and len(sel) == 4:
+            tracker = (cv2.legacy.TrackerGOTURN_create()
+                       if hasattr(cv2, "legacy") and hasattr(cv2.legacy, "TrackerGOTURN_create")
+                       else cv2.TrackerGOTURN_create())
+            tracker.init(frame, tuple(map(int, sel)))
 
-            cv2.putText(frame, label, (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255))
-
-    t, _ = net.getPerfProfile()
-    label2 = 'Inference time: %.2f ms' % (t * 1000.0 / cv2.getTickFrequency())
-    cv2.putText(frame, label2, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255))
-    cv2.imshow(winName, frame)
-
-src.release()
-cv2.destroyWindow(winName)
+cap.release()
+cv2.destroyWindow(win)
