@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 import mediapipe as mp
 
-# ---------- ПАРАМЕТРЫ ----------
 VIDEO_PATH = "girl_desert.mp4"
 INIT_BBOX = None          # (x, y, w, h) или None — выбрать мышкой
 SEARCH_PAD = 0.50         # расширение области анализа (в долях w/h)
@@ -17,7 +16,6 @@ FACE_NMS_THR = 0.3
 # MediaPipe Pose (скелет/«трекер»)
 POSE_MIN_DET_CONF = 0.5
 POSE_MIN_TRACK_CONF = 0.5
-# --------------------------------
 
 BASE = Path(__file__).parent
 mp_pose = mp.solutions.pose
