@@ -241,3 +241,4 @@ Data_analisis/Sem7/pose_iter_160000.caffemodel
 .gitignore
 Data_analisis/Sem7/pose_landmarker_full.task
 Data_analisis/Sem7/pose_deploy_linevec_faster_4_stages.prototxt
+Data_analisis/Sem7/models/pose_landmarker_full.task
