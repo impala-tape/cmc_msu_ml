@@ -4,20 +4,18 @@ import cv2
 import numpy as np
 import mediapipe as mp
 
-# ---------- ПАРАМЕТРЫ ----------
 VIDEO_PATH = "girl_desert.mp4"
 INIT_BBOX = None          # (x, y, w, h) или None — выбрать мышкой
-SEARCH_PAD = 0.20         # расширение области анализа (в долях w/h)
+SEARCH_PAD = 0.50         # расширение области анализа (в долях w/h)
 
 # YuNet (лицо)
-YUNET_PATH = "models/yunet.onnx"
-FACE_CONF_THR = 0.6
+YUNET_PATH = "models/face_detection_yunet_2023mar.onnx"
+FACE_CONF_THR = 0.5
 FACE_NMS_THR = 0.3
 
 # MediaPipe Pose (скелет/«трекер»)
 POSE_MIN_DET_CONF = 0.5
 POSE_MIN_TRACK_CONF = 0.5
-# --------------------------------
 
 BASE = Path(__file__).parent
 mp_pose = mp.solutions.pose
@@ -146,11 +144,50 @@ def main():
             draw_pose(frame, results, offx=0, offy=0, roi_w=W, roi_h=H)
 
         # Лицо: YuNet только в расширенной области (маска всего кадра)
+                # Лицо: YuNet только в расширенной области (маска всего кадра)
         masked = np.zeros_like(frame)
         masked[y0:y1, x0:x1] = roi
         face_det.setInputSize((W, H))
-        faces, _ = face_det.detect(masked)
+
+        res = face_det.detect(masked)
+        faces = []
+
+        # разных версиях OpenCV сигнатура может быть:
+        # 1) faces, confidences
+        # 2) retval, faces
+        # 3) retval, faces, confidences
+        if isinstance(res, tuple):
+            if len(res) == 2:
+                a, b = res
+                # если a — массив/None, то это faces; если int — это retval
+                if isinstance(a, (np.ndarray, list)) or a is None:
+                    faces = a
+                else:
+                    faces = b
+            elif len(res) >= 3:
+                a, b, *_ = res
+                # чаще всего: retval, faces, confidences
+                if isinstance(a, (np.ndarray, list)) or a is None:
+                    faces = a
+                else:
+                    faces = b
+        else:
+            # на всякий случай, если когда-то вернут сразу массив
+            faces = res
+
         faces = [] if faces is None else faces
+
+        # Рисуем трек-bbox и лица
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (60, 220, 60), 2)
+        for f in faces:
+            fx, fy, fw, fh, score = int(f[0]), int(f[1]), int(f[2]), int(f[3]), float(f[-1])
+            cx, cy = fx + fw // 2, fy + fh // 2
+            if not (x0 <= cx <= x1 and y0 <= cy <= y1):
+                continue
+            cv2.rectangle(frame, (fx, fy), (fx + fw, fy + fh), (0, 0, 255), 2)
+            cv2.putText(frame, f"{score:.2f}", (fx, max(0, fy - 6)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2)
+
 
         # Рисуем трек-bbox и лица
         cv2.rectangle(frame, (x, y), (x + w, y + h), (60, 220, 60), 2)
