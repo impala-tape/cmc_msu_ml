@@ -247,3 +247,4 @@ Data_analisis/Sem7/models/res10_300x300_ssd_iter_140000_fp16.caffemodel
 Data_analisis/Sem7/models/pose_deploy_linevec_faster_4_stages.prototxt
 .gitignore
 Data_analisis/Sem7/models/pose_iter_160000.caffemodel
+Prak/gena_na.py
