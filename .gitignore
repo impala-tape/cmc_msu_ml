@@ -248,3 +248,9 @@ Data_analisis/Sem7/models/pose_deploy_linevec_faster_4_stages.prototxt
 .gitignore
 Data_analisis/Sem7/models/pose_iter_160000.caffemodel
 Prak/gena_na.py
+ML/Base_7_SVM/requirements_2025_26_for_colab_small.txt
+*.npy
+*.npz
+
+ML/Base_7_SVM/public_tests/results.json
+ML/Base_7_SVM/public_tests/.DS_Store
