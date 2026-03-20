@@ -254,3 +254,12 @@ ML/Base_7_SVM/requirements_2025_26_for_colab_small.txt
 
 ML/Base_7_SVM/public_tests/results.json
 ML/Base_7_SVM/public_tests/.DS_Store
+*.zip
+*.pdf
+ML/Base_8_Decosion_tree/requirements_2025_26_for_colab_small.txt
+ML/Base_8_Decosion_tree/solution_template/__MACOSX
+ML/Base_8_Decosion_tree/solution_template/__pycache__
+ML/Research_6_Ensembles/work/__MACOSX/
+*.json
+*.txt
+*.DS_Store
