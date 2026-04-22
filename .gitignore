@@ -212,16 +212,6 @@ poetry.lock
 Data_analisis/20_10_25/face.mp4
 Data_analisis/20_10_25/deploy.prototxt
 Data_analisis/20_10_25/res10_300x300_ssd_iter_140000_fp16.caffemodel
-*.jpg
-*.jpeg
-*.png
-*.gif
-*.bmp
-*.tiff
-*.mp4
-*.avi
-*.csv
-*.xlsx
 OPP_Varlamov
 data.pkl
 CV_GML/research_knn/__MACOSX/._public_tests
@@ -264,3 +254,8 @@ ML/Research_6_Ensembles/work/__MACOSX/
 *.txt
 *.DS_Store
 ML/Base_10/part1/data
+ML/Base_11_Gradient_boosting/solution_template/__MACOSX/._public_tests
+ML/Base_11_Gradient_boosting/solution_template/__MACOSX/public_tests/._01_boosting_movies_gt
+ML/Base_11_Gradient_boosting/solution_template/__MACOSX/public_tests/._01_boosting_movies_input
+ML/Base_11_Gradient_boosting/solution_template/__MACOSX/public_tests/01_boosting_movies_input/._test
+ML/Base_11_Gradient_boosting/solution_template/__MACOSX/public_tests/01_boosting_movies_input/._train
