@@ -25,7 +25,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-*.onnx
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -239,13 +238,8 @@ Data_analisis/Sem7/models/pose_deploy_linevec_faster_4_stages.prototxt
 Data_analisis/Sem7/models/pose_iter_160000.caffemodel
 Prak/gena_na.py
 ML/Base_7_SVM/requirements_2025_26_for_colab_small.txt
-*.npy
-*.npz
-
 ML/Base_7_SVM/public_tests/results.json
 ML/Base_7_SVM/public_tests/.DS_Store
-*.zip
-*.pdf
 ML/Base_8_Decosion_tree/requirements_2025_26_for_colab_small.txt
 ML/Base_8_Decosion_tree/solution_template/__MACOSX
 ML/Base_8_Decosion_tree/solution_template/__pycache__

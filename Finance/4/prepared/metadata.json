@@ -1,0 +1,20 @@
+{
+  "source_file": "Data_zad4_2026.xlsx",
+  "source_sheet": "Исх_данные",
+  "source_rows_nonempty": 24,
+  "quote_rows": 23,
+  "return_rows": 22,
+  "date_from": "2010-09-01",
+  "date_to": "2010-10-01",
+  "asset_order": [
+    "GAZP",
+    "ROSN",
+    "LKOH",
+    "FEES",
+    "SBER",
+    "VTBR"
+  ],
+  "index_column": "MICEX",
+  "trading_days_per_year": 252,
+  "note": "The screenshot mentions 2016-04-01..2016-04-10, but Data_zad4_2026.xlsx contains 2010-09-01..2010-10-01."
+}
