@@ -1,4 +1,7 @@
 1;
+% Строка выше нужна для GNU Octave: она переводит файл в режим script/function
+% file и позволяет объявить вспомогательные функции до основного расчета.
+% В MATLAB это не мешает выполнению файла.
 
 % Task 4. Optimal portfolio in the Tobin-Sharpe-Lintner model.
 % Octave-compatible version. It uses only base Octave functions:
@@ -9,11 +12,29 @@
 % - prepare_data.py exports lossless CSV copies to prepared/.
 
 function [A, b] = twoSidedLinearConstraints(G, lowerBound, upperBound)
+    % Преобразует двусторонние ограничения lower <= G*x <= upper
+    % к стандартному виду A*x <= b.
+    %
+    % Верхняя граница:
+    %   G*x <= upper
+    % Нижняя граница:
+    %   lower <= G*x  <=>  -G*x <= -lower
     A = [G; -G];
     b = [upperBound; -lowerBound];
 endfunction
 
 function [A, b] = groupComparisonConstraints(G1, G2, lowerBound, upperBound)
+    % Формирует ограничения типа GroupComparison.
+    %
+    % Исходная форма:
+    %   lower <= (G1*x) / (G2*x) <= upper
+    %
+    % Для qp нужны линейные неравенства A*x <= b:
+    %   -G1*x + lower*G2*x <= 0
+    %    G1*x - upper*G2*x <= 0
+    %
+    % Здесь предполагается, что знаменатель G2*x положителен,
+    % что выполняется при заданных нижних границах долей активов.
     m = rows(G1);
     A = zeros(2 * m, columns(G1));
     b = zeros(2 * m, 1);
@@ -24,6 +45,13 @@ function [A, b] = groupComparisonConstraints(G1, G2, lowerBound, upperBound)
 endfunction
 
 function x0 = initialPoint(A, b, lb, ub)
+    % Подбирает начальную точку для active-set метода qp.
+    % Octave qp работает устойчивее, если стартовая точка уже допустима.
+    %
+    % Проверяем несколько осмысленных кандидатов:
+    % 1) равные веса;
+    % 2) портфель, удовлетворяющий групповым ограничениям;
+    % 3) портфель, близкий к итоговому решению с GroupComparison.
     n = numel(lb);
     candidates = [
         ones(n, 1) / n, ...
@@ -39,10 +67,23 @@ function x0 = initialPoint(A, b, lb, ub)
             endif
         endif
     endfor
+    % Запасной вариант. В нормальном сценарии он не используется,
+    % но защищает расчет от полного отсутствия подходящего кандидата.
     x0 = (lb + ub) / 2;
 endfunction
 
 function [x, ok] = solveQp(x0, H, q, Aeq, beq, lb, ub, Aineq, bineq)
+    % Единая обертка над Octave qp.
+    %
+    % Решаем задачу:
+    %   min 0.5*x'*H*x + q'*x
+    % при условиях:
+    %   Aeq*x = beq
+    %   lb <= x <= ub
+    %   Aineq*x <= bineq
+    %
+    % Встроенный qp задает неравенства как A_lb <= A_in*x <= A_ub,
+    % поэтому обычное Aineq*x <= bineq записываем через нижнюю границу -Inf.
     if isempty(Aineq)
         A_lb = [];
         A_in = [];
@@ -53,6 +94,8 @@ function [x, ok] = solveQp(x0, H, q, Aeq, beq, lb, ub, Aineq, bineq)
         A_ub = bineq;
     endif
 
+    % Небольшая симметризация и диагональный сдвиг защищают от численных
+    % проблем, если ковариационная матрица почти вырождена на короткой выборке.
     options = struct('MaxIter', 2000, 'TolX', 1e-10, 'AllowSemidefinite', true);
     H = (H + H') / 2 + 1e-10 * eye(rows(H));
     [x, ~, info] = qp(x0, H, q, Aeq, beq, lb, ub, A_lb, A_in, A_ub, options);
@@ -60,6 +103,9 @@ function [x, ok] = solveQp(x0, H, q, Aeq, beq, lb, ub, Aineq, bineq)
 endfunction
 
 function out = solveLinearReturn(mu, lb, ub, Aineq, bineq, Aeq, beq, minimizeReturn)
+    % Находит минимально или максимально достижимую доходность
+    % при заданном наборе ограничений. Это нужно, чтобы построить сетку
+    % целевых доходностей для эффективной границы.
     n = numel(mu);
     x0 = initialPoint(Aineq, bineq, lb, ub);
     if minimizeReturn
@@ -75,6 +121,13 @@ function out = solveLinearReturn(mu, lb, ub, Aineq, bineq, Aeq, beq, minimizeRet
 endfunction
 
 function [riskVals, returnVals, weightVals] = computeFrontier(mu, Sigma, lb, ub, Aineq, bineq, nPoints)
+    % Строит эффективную границу для рискованных активов.
+    %
+    % Для каждой целевой доходности target решается задача:
+    %   min x'*Sigma*x
+    %   s.t. sum(x)=1, mu'*x=target и все дополнительные ограничения.
+    %
+    % Результат: набор точек (risk, return) и соответствующие веса активов.
     n = numel(mu);
     x0 = initialPoint(Aineq, bineq, lb, ub);
     AeqSum = ones(1, n);
@@ -96,12 +149,23 @@ function [riskVals, returnVals, weightVals] = computeFrontier(mu, Sigma, lb, ub,
             riskVals(end + 1, 1) = sqrt(x' * Sigma * x);
             returnVals(end + 1, 1) = mu' * x;
             weightVals(end + 1, :) = x';
+            % Следующую точку границы стартуем с предыдущего решения:
+            % соседние точки близки, поэтому qp сходится стабильнее.
             x0 = x;
         endif
     endfor
 endfunction
 
 function sol = solveTslCase(mu, Sigma, rf, theta, lb, ub, Aineq, bineq, caseName)
+    % Решает одну из двух задач ТШЛ: либо режим вложения свободных средств,
+    % либо режим заимствования. Конкретный режим задается ограничениями
+    % Aineq/bineq, а ставка rf передается отдельно.
+    %
+    % Максимизация полезности:
+    %   U = rf*(1-sum(x)) + mu'*x - 0.5*theta*x'*Sigma*x
+    %
+    % Эквивалентная задача минимизации для qp:
+    %   min 0.5*x'*(theta*Sigma)*x - (mu-rf)'*x
     n = numel(mu);
     x0 = initialPoint(Aineq, bineq, lb, ub);
     H = theta * Sigma;
@@ -117,6 +181,10 @@ function sol = solveTslCase(mu, Sigma, rf, theta, lb, ub, Aineq, bineq, caseName
         return;
     endif
 
+    % xi показывает суммарную долю рискованного портфеля.
+    % riskFreeWeight = 1 - xi:
+    %   положительная величина -> вложение в безрисковый актив;
+    %   отрицательная величина -> заимствование.
     xi = sum(x);
     riskFreeWeight = 1 - xi;
     expectedReturn = rf * riskFreeWeight + mu' * x;
@@ -131,6 +199,13 @@ function sol = solveTslCase(mu, Sigma, rf, theta, lb, ub, Aineq, bineq, caseName
 endfunction
 
 function sol = solveTslPortfolio(mu, Sigma, rfLend, rfBorrow, theta, lb, ub, Aineq, bineq)
+    % Полная задача ТШЛ с разными ставками для вложения и заимствования.
+    %
+    % Из-за разных ставок задача становится кусочно-квадратичной.
+    % Поэтому решаем два выпуклых случая отдельно:
+    % 1) lending: sum(x) <= 1, свободная часть идет в депозит;
+    % 2) borrowing: sum(x) >= 1, недостающая часть берется в долг.
+    % Затем выбираем решение с большей полезностью.
     n = numel(mu);
     lendA = [Aineq; ones(1, n)];
     lendB = [bineq; 1];
@@ -148,6 +223,8 @@ function sol = solveTslPortfolio(mu, Sigma, rfLend, rfBorrow, theta, lb, ub, Ain
 endfunction
 
 function ratios = safeRatios(numerators, denominators)
+    % Аккуратно считает отношения групп для диагностической таблицы.
+    % Если знаменатель оказался нулевым, оставляем NaN вместо деления на ноль.
     ratios = nan(size(numerators));
     for i = 1:numel(numerators)
         if abs(denominators(i)) > 1e-12
@@ -158,6 +235,11 @@ endfunction
 
 function rowsOut = appendActivityRows(rowsIn, scenario, theta, assets, x, lb, ub, ...
     groupNames, groupValues, gl, gu, comparisonNames, comparisonValues, cl, cu)
+    % Собирает таблицу активности ограничений.
+    %
+    % ActiveLower / ActiveUpper показывают, находится ли найденное значение
+    % практически на нижней или верхней границе. Это помогает понять,
+    % какие условия реально формируют оптимальный портфель.
     rowsOut = rowsIn;
     tol = 1e-5;
 
@@ -178,6 +260,8 @@ function rowsOut = appendActivityRows(rowsIn, scenario, theta, assets, x, lb, ub
 endfunction
 
 function writeAssetEstimates(path, assets, muDaily, muAnnual, riskAnnual)
+    % Записывает оценки доходности и риска в CSV для последующего вывода
+    % в ноутбуке и отчете.
     fid = fopen(path, 'w');
     fprintf(fid, 'Ticker,ExpectedDailyReturn,ExpectedAnnualReturn,AnnualVolatility\n');
     for i = 1:numel(assets)
@@ -187,6 +271,7 @@ function writeAssetEstimates(path, assets, muDaily, muAnnual, riskAnnual)
 endfunction
 
 function writeNamedMatrix(path, names, M)
+    % Записывает именованную матрицу, например годовую ковариационную матрицу.
     fid = fopen(path, 'w');
     fprintf(fid, 'Asset');
     for i = 1:numel(names)
@@ -204,6 +289,7 @@ function writeNamedMatrix(path, names, M)
 endfunction
 
 function writeFrontier(path, assets, scenarios, rowsData)
+    % Сохраняет точки эффективных границ для всех сценариев ограничений.
     fid = fopen(path, 'w');
     fprintf(fid, 'Scenario,RiskAnnual,ReturnAnnual');
     for i = 1:numel(assets)
@@ -221,6 +307,8 @@ function writeFrontier(path, assets, scenarios, rowsData)
 endfunction
 
 function writeOptimal(path, assets, scenarios, cases, rowsData)
+    % Сохраняет оптимальные портфели по всем theta и сценариям.
+    % Веса активов идут в том же порядке, что и массив assets.
     fid = fopen(path, 'w');
     fprintf(fid, 'Scenario,Theta,RiskFreeCase,ExpectedReturnAnnual,RiskAnnual,Utility,XiRiskyAllocation,RiskFreeWeight');
     for i = 1:numel(assets)
@@ -238,6 +326,7 @@ function writeOptimal(path, assets, scenarios, cases, rowsData)
 endfunction
 
 function writeActivity(path, activityRows)
+    % Сохраняет диагностическую таблицу активных ограничений.
     fid = fopen(path, 'w');
     fprintf(fid, 'Scenario,Theta,ConstraintType,Name,Value,LowerBound,UpperBound,ActiveLower,ActiveUpper\n');
     for i = 1:rows(activityRows)
@@ -251,6 +340,7 @@ endfunction
 %% Main calculation
 clc; close all;
 
+% Все пути считаются относительно папки Finance/4, где лежит этот файл.
 rootDir = fileparts(mfilename('fullpath'));
 preparedDir = fullfile(rootDir, 'prepared');
 resultsDir = fullfile(rootDir, 'results');
@@ -263,20 +353,39 @@ if ~exist(returnsFile, 'file')
     error('Missing prepared/returns_simple.csv. Run: python Finance/4/prepare_data.py');
 endif
 
+% Порядок тикеров фиксируется один раз и дальше используется во всех
+% матрицах ограничений, таблицах и графиках.
 assets = {'GAZP', 'ROSN', 'LKOH', 'FEES', 'SBER', 'VTBR'};
 n = numel(assets);
+
+% Годовая шкала: стандартное приближение 252 торговых дня.
 tradingDaysPerYear = 252;
+
+% В исходном Excel фактический интервал 2010-09-01..2010-10-01.
+% Для него ставка рефинансирования ЦБ РФ равна 7.75% годовых.
+% При заимствовании по условию добавляем 5 процентных пунктов.
 rfLendAnnual = 0.0775;
 rfBorrowAnnual = rfLendAnnual + 0.05;
+
+% Основные theta из задания: 2, 3, 4.
+% Дополнительные 8, 12, 20, 40 добавлены для анализа чувствительности:
+% на них видно, когда портфель начинает уходить от плеча к депозиту.
 thetaValues = [2 3 4 8 12 20 40];
 
+% returns_simple.csv содержит текстовый первый столбец date.
+% Поэтому читаем числовую часть начиная со строки 2 и столбца 2.
 R = csvread(returnsFile, 1, 1);
+
+% Оцениваем дневные параметры по выборке и затем годим их умножением на 252.
+% Это учебное масштабирование: на короткой выборке оценки могут быть резкими.
 muDaily = mean(R, 1)';
 covDaily = cov(R);
 mu = muDaily * tradingDaysPerYear;
 Sigma = covDaily * tradingDaysPerYear;
 assetRisk = sqrt(diag(Sigma));
 
+% Сохраняем промежуточные оценки, чтобы ноутбук не пересчитывал их заново
+% и мог показывать ровно те же результаты, что дает Octave-скрипт.
 writeAssetEstimates(fullfile(resultsDir, 'asset_estimates.csv'), assets, muDaily, mu, assetRisk);
 writeNamedMatrix(fullfile(resultsDir, 'covariance_annual.csv'), assets, Sigma);
 
@@ -286,9 +395,20 @@ for i = 1:n
     fprintf('%-8s %13.4f%% %13.4f%%\n', assets{i}, 100 * mu(i), 100 * assetRisk(i));
 endfor
 
+% Индивидуальные ограничения из задания: каждая бумага занимает
+% не меньше 5% и не больше 39% рискованной части портфеля.
 lb = 0.05 * ones(n, 1);
 ub = 0.39 * ones(n, 1);
 
+% Матрица групповых ограничений.
+% Столбцы соответствуют assets:
+%   GAZP, ROSN, LKOH, FEES, SBER, VTBR.
+% Строки:
+%   1) нефтегаз: GAZP, ROSN, LKOH
+%   2) энергетика: FEES
+%   3) банки: SBER, VTBR
+%   4) внутренний рынок: LKOH, FEES, SBER, VTBR
+%   5) внешний рынок: GAZP, ROSN
 GA = [
     1 1 1 0 0 0
     0 0 0 1 0 0
@@ -299,8 +419,16 @@ GA = [
 groupNames = {'OilGas', 'Energy', 'Banks', 'Internal', 'External'};
 gl = [0.25; 0.27; 0.15; 0.25; 0.10];
 gu = [0.65; 0.75; 0.55; 0.85; 0.35];
+
+% Переводим gl <= GA*x <= gu в Agroup*x <= bgroup.
 [Agroup, bgroup] = twoSidedLinearConstraints(GA, gl, gu);
 
+% GroupComparison:
+% В тексте задания приведен общий вид, но не даны конкретные числа.
+% Поэтому здесь явно зафиксированы два интерпретируемых отношения:
+%   1) внутренний рынок / внешний рынок: 1..5
+%   2) нефтегаз / банки: 0.8..3
+% При необходимости эти границы можно заменить, не меняя остальной код.
 G1 = [
     0 0 1 1 1 1
     1 1 1 0 0 0
@@ -314,6 +442,10 @@ comparisonLower = [1.0; 0.8];
 comparisonUpper = [5.0; 3.0];
 [Acomparison, bcomparison] = groupComparisonConstraints(G1, G2, comparisonLower, comparisonUpper);
 
+% Три сценария нужны, чтобы отдельно увидеть вклад каждого типа ограничений:
+% asset_limits      -> только индивидуальные границы;
+% group_limits      -> индивидуальные + групповые ограничения;
+% group_comparison  -> полный набор, включая отношения групп.
 scenarios = struct([]);
 scenarios(1).name = 'Asset limits only';
 scenarios(1).code = 'asset_limits';
@@ -333,11 +465,14 @@ scenarios(3).b = [bgroup; bcomparison];
 frontierRows = [];
 frontierScenario = {};
 
+% Рисуем эффективные границы в невидимой фигуре: файл нужен для ноутбука,
+% но открывать окно при пакетном запуске Octave не требуется.
 figure('visible', 'off');
 hold on; grid on;
 colors = lines(numel(scenarios));
 
 for s = 1:numel(scenarios)
+    % Для каждого набора ограничений строим свою эффективную границу.
     [riskVals, returnVals, weightVals] = computeFrontier(mu, Sigma, lb, ub, scenarios(s).A, scenarios(s).b, 35);
     plot(riskVals, returnVals, 'LineWidth', 2.2, 'Color', colors(s, :));
 
@@ -354,6 +489,8 @@ legend({scenarios.name}, 'Location', 'best');
 print(gcf, fullfile(resultsDir, 'efficient_frontiers.png'), '-dpng', '-r180');
 close(gcf);
 
+% Табличная версия границ сохраняется отдельно от картинки:
+% это удобно для проверки и для дополнительных графиков в ноутбуке.
 writeFrontier(fullfile(resultsDir, 'frontier_points.csv'), assets, frontierScenario, frontierRows);
 
 optimalRows = [];
@@ -366,12 +503,17 @@ fprintf('%-18s %5s %-10s %10s %10s %8s\n', 'Scenario', 'theta', 'case', 'return'
 
 for s = 1:numel(scenarios)
     for theta = thetaValues
+        % Для каждой пары (сценарий ограничений, theta) ищем оптимальный
+        % портфель с учетом двух разных ставок: lending и borrowing.
         sol = solveTslPortfolio(mu, Sigma, rfLendAnnual, rfBorrowAnnual, theta, ...
             lb, ub, scenarios(s).A, scenarios(s).b);
 
         x = sol.weights;
         xi = sum(x);
         riskFreeWeight = 1 - xi;
+
+        % Эти значения нужны не для оптимизации, а для диагностики:
+        % какие групповые ограничения активны в найденном решении.
         groupValues = GA * x;
         comparisonValues = safeRatios(G1 * x, G2 * x);
 
@@ -388,6 +530,8 @@ for s = 1:numel(scenarios)
     endfor
 endfor
 
+% Финальные результаты сохраняются в CSV. Ноутбук читает именно эти файлы,
+% поэтому m-файл остается единственным источником расчетной логики.
 writeOptimal(fullfile(resultsDir, 'optimal_portfolios.csv'), assets, optimalScenario, optimalCase, optimalRows);
 writeActivity(fullfile(resultsDir, 'constraint_activity.csv'), activityRows);
 
